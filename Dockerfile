@@ -10,10 +10,13 @@ ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 
 WORKDIR /app
 
-# Copy lockfile too so npm installs exact, reproducible versions
 COPY package.json package-lock.json* ./
 
-RUN npm install --omit=dev
+# Drop the "prepare" script (sets up git hooks via husky) — irrelevant
+# and unrunnable in a container with no .git directory, and husky itself
+# is a devDependency we're intentionally omitting below.
+RUN npm pkg delete scripts.prepare \
+    && npm install --omit=dev
 
 # Stage 2: Runner - Copy application code and run
 FROM node:25-alpine
