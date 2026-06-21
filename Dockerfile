@@ -1,48 +1,29 @@
-# Stage 1: Builder - Install dependencies
-FROM node:25-alpine AS builder
+# Stage 1: Builder
+FROM oven/bun:1-alpine AS builder
 
-# Build tools required for native modules (node-libsamplerate, etc.)
+# Build tools still needed — node-libsamplerate's postinstall compiles
+# native code with cmake/make regardless of which package manager runs it
 RUN apk add --no-cache git python3 make cmake g++
 
-# CMake 4.x dropped support for old cmake_minimum_required() declarations;
-# this lets older native deps configure without erroring out.
+# Same CMake 4.x compatibility fix as before
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY package.json bun.lockb* ./
 
-# Drop the "prepare" script (sets up git hooks via husky) — irrelevant
-# and unrunnable in a container with no .git directory, and husky itself
-# is a devDependency we're intentionally omitting below.
-RUN npm pkg delete scripts.prepare \
-    && npm install --omit=dev
+# --production skips devDependencies and skips the "prepare" lifecycle script
+RUN bun install --production
 
-# Stage 2: Runner - Copy application code and run
-FROM node:25-alpine
-
-# Set working directory
+# Stage 2: Runner
+FROM oven/bun:1-alpine
 WORKDIR /app
-
-# Copy production dependencies from the builder stage
 COPY --from=builder /app/node_modules ./node_modules
-
-# Copy the rest of the application source code
-# This includes the 'src' directory, default config, and package files for runtime information.
 COPY src/ ./src/
 COPY config.default.js ./config.default.js
 COPY package.json ./package.json
-
-# Expose the port the application listens on (default is 3000 from config.default.js)
 EXPOSE 3000
-
-# Set environment variables for configuration
-# These can be overridden via docker-compose.yml or 'docker run -e'
-# Example: NODELINK_SERVER_PASSWORD=your_secure_password
 ENV NODELINK_SERVER_PORT=3000 \
     NODELINK_SERVER_HOST=0.0.0.0 \
     NODELINK_CLUSTER_ENABLED=true
-
-# Command to run the application
-# It uses the 'start' script defined in package.json
-CMD ["npm", "start"]
+CMD ["bun", "src/index.ts"]
