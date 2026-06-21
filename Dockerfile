@@ -1,20 +1,19 @@
 # Stage 1: Builder - Install dependencies
 FROM node:25-alpine AS builder
 
-# Install git (required for npm to install dependencies from GitHub)
-RUN apk add --no-cache git
+# Build tools required for native modules (node-libsamplerate, etc.)
+RUN apk add --no-cache git python3 make cmake g++
 
-# Set working directory
+# CMake 4.x dropped support for old cmake_minimum_required() declarations;
+# this lets older native deps configure without erroring out.
+ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
+
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available) to leverage Docker cache
-# Use wildcards to ensure both package.json and package-lock.json (or yarn.lock/pnpm-lock.yaml) are copied
-COPY package.json ./
+# Copy lockfile too so npm installs exact, reproducible versions
+COPY package.json package-lock.json* ./
 
-# Install production dependencies
-# This command automatically handles package-lock.json if it exists, otherwise it creates one.
-# For Bun, you might use 'bun install --production'.
-RUN npm install
+RUN npm install --omit=dev
 
 # Stage 2: Runner - Copy application code and run
 FROM node:25-alpine
